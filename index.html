@@ -120,15 +120,17 @@ permissions and limitations under the License.
 <script src="//cdn.datatables.net/plug-ins/f2c75b7247b/integration/bootstrap/3/dataTables.bootstrap.js"></script>
 
 <script type="text/javascript">
-var s3exp_config = { Region: '', Bucket: '', Prefix: '', Delimiter: '/' };
+// Assuming URLs like http://internal_s3_instance.mycompany.com/my_bucket/index.html
+var bucket = document.location.pathname.split("/")[1];
+var s3exp_config = { Region: '', Bucket: bucket, Prefix: '', Delimiter: '/' };
 var s3exp_lister = null;
 var s3exp_columns = { key:1, folder:2, date:3, size:4 };
 
-AWS.config.region = 'us-east-1';
-console.log('Region: ' + AWS.config.region);
+document.title = bucket + " explorer";
 
 // Initialize S3 SDK and the moment library (for time formatting utilities)
-var s3 = new AWS.S3();
+var ep = new AWS.Endpoint(document.location.origin);
+var s3 = new AWS.S3({endpoint: ep, protocol: "http", s3ForcePathStyle: true});
 moment().format();
 
 function bytesToSize(bytes) {
@@ -145,20 +147,8 @@ if (typeof String.prototype.endsWith != 'function') {
     };
 }
 
-function object2hrefvirt(bucket, object) {
-    if (AWS.config.region === "us-east-1") {
-        return document.location.protocol + '//' + bucket + '.s3.amazonaws.com/' + object;
-    } else {
-        return document.location.protocol + '//' + bucket + '.s3-' + AWS.config.region + '.amazonaws.com/' + object;
-    }
-}
-
 function object2hrefpath(bucket, object) {
-    if (AWS.config.region === "us-east-1") {
-        return document.location.protocol + "//s3.amazonaws.com/" + bucket + "/" + object;
-    } else {
-        return document.location.protocol + "//s3-' + AWS.config.region + '.amazonaws.com/" + bucket + "/" + object;
-    }
+    return document.location.protocol + "//" + document.location.host + "/" + bucket + "/" + object;
 }
 
 function isthisdocument(bucket, object) {
@@ -227,7 +217,7 @@ function folder2breadcrumbs(data) {
                 e.preventDefault();
                 console.log('Breadcrumb click bucket: ' + data.params.Bucket);
                 s3exp_config = {Bucket: data.params.Bucket, Prefix: '', Delimiter: data.params.Delimiter};
-                (s3exp_lister = s3list(s3exp_config, s3draw)).go();
+                window.location.hash = '';
             });
         // Else add the folders within the bucket
         } else {
@@ -247,7 +237,7 @@ function folder2breadcrumbs(data) {
                         e.preventDefault();
                         console.log('Breadcrumb click object prefix: ' + saveprefix);
                         s3exp_config = {Bucket: data.params.Bucket, Prefix: saveprefix, Delimiter: data.params.Delimiter};
-                        (s3exp_lister = s3list(s3exp_config, s3draw)).go();
+                        window.location.hash = saveprefix;
                     });
                 })();
             }
@@ -368,6 +358,24 @@ function resetDepth() {
     $('input[name="optionsdepth"][value="folder"]').parent().addClass('active');
 }
 
+function getPrefix() {
+    // Using technique from https://gist.github.com/jlong/2428561
+    // to parse the document URL.
+    var parser = document.createElement('a');
+    parser.href = document.URL;
+
+    prefix = "";
+    if (parser.hash) {
+        // Start with prefix if passed
+        var prefix = parser.hash.substring(1); // Strip #
+        if (!prefix.endsWith('/')) {
+            prefix = prefix + "/";
+        }
+        console.log("Prefix: " + prefix);
+    }
+    return prefix
+}
+
 $(document).ready(function(){
     console.log('ready');
 
@@ -423,10 +431,10 @@ $(document).ready(function(){
             return fullpath2filename(data);
         } else if (isfolder(data)) {
             console.log("is folder: " + data);
-            return '<a data-s3="folder" data-prefix="' + data + '" href="' + object2hrefvirt(s3exp_config.Bucket, data) + '">' + prefix2folder(data) + '</a>';
+            return '<a data-s3="folder" data-prefix="' + data + '" href="' + object2hrefpath(s3exp_config.Bucket, data) + '">' + prefix2folder(data) + '</a>';
         } else {
             console.log("not folder/this document: " + data);
-            return '<a data-s3="object" href="' + object2hrefvirt(s3exp_config.Bucket, data) + '">' + fullpath2filename(data) + '</a>';
+            return '<a data-s3="object" href="' + object2hrefpath(s3exp_config.Bucket, data) + '">' + fullpath2filename(data) + '</a>';
         }
     }
 
@@ -437,12 +445,35 @@ $(document).ready(function(){
     // Initial DataTable settings
     $('#tb-s3objects').DataTable({
         iDisplayLength: 50,
+        autoWidth: true,
         order: [[1, 'asc'], [0, 'asc']],
         aoColumnDefs: [
-            { "aTargets": [ 0 ], "mData": "Key", "mRender": function (data, type, full) { return (type == 'display') ? renderObject(data, type, full) : data; }, "sType": "key" },
-            { "aTargets": [ 1 ], "mData": "Key", "mRender": function (data, type, full) { return renderFolder(data, type, full); } },
-            { "aTargets": [ 2 ], "mData": "LastModified", "mRender": function (data, type, full) { return data ? moment(data).fromNow() : ""; } },
-            { "aTargets": [ 3 ], "mData": function (source, type, val) { return source.Size ? ((type == 'display') ? bytesToSize(source.Size) : source.Size) : ""; } },
+            { 
+                "aTargets": [ 0 ], 
+                "mData": "Key", 
+                "mRender": function (data, type, full) { 
+                    return (type == 'display') ? renderObject(data, type, full) : data; }, "sType": "key" 
+            },
+            { 
+                "aTargets": [ 1 ], 
+                "mData": "Key", 
+                "mRender": function (data, type, full) { 
+                    return renderFolder(data, type, full); 
+                } 
+            },
+            { 
+                "aTargets": [ 2 ], 
+                "mData": "LastModified", 
+                "mRender": function (data, type, full) { 
+                    return data ? moment(data).format("YYYY-MM-DD HH:MM:ss") + " - " + moment(data).fromNow() : ""; 
+                } 
+            },
+            { 
+                "aTargets": [ 3 ], 
+                "mData": function (source, type, val) { 
+                    return source.Size ? ((type == 'display') ? bytesToSize(source.Size) : source.Size) : ""; 
+                } 
+            },
         ]
     });
 
@@ -483,7 +514,7 @@ $(document).ready(function(){
             delete s3exp_config.Marker;
             s3exp_config.Prefix = target.dataset.prefix;
             s3exp_config.Delimiter = $("input[name='optionsdepth']:checked").val() == "folder" ? "/" : "";
-            (s3exp_lister = s3list(s3exp_config, s3draw)).go();
+            window.location.hash = s3exp_config.Prefix;
         // Else user has clicked on an object so download it in new window/tab
         } else {
             window.open(target.href, '_blank');
@@ -534,6 +565,7 @@ $(document).ready(function(){
     // derive the initial bucket from the document URL (useful if index.html was
     // launched directly from within a bucket), else prompt the user.
     if (s3exp_config.Bucket) {
+        s3exp_config.Prefix = getPrefix();
         (s3exp_lister = s3list(s3exp_config, s3draw)).go();
     } else if (parser.hostname.endsWith('amazonaws.com')) {
         // Hostname is likely to be in one of the following forms:
@@ -581,4 +613,12 @@ $(document).ready(function(){
         promptForBucketInput();
     }
 });
+
+// If the hash portion of the URL is changed, reload from that prefix
+window.onhashchange = function() {
+    // Using technique from https://gist.github.com/jlong/2428561
+    // to parse the document URL.
+    s3exp_config.Prefix = getPrefix();
+    (s3exp_lister = s3list(s3exp_config, s3draw)).go();
+}
 </script>

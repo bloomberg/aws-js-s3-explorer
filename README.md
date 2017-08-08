@@ -1,8 +1,19 @@
 # AWS JavaScript S3 Explorer
 
+
 AWS JavaScript S3 Explorer is a JavaScript application that uses AWS's JavaScript SDK and S3 APIs to make the contents of an S3 bucket easy to browse via a web browser. We've created this to enable easier sharing of objects and data via Amazon S3.
 
-The index.html file in this bucket contains the entire application. A visitor to the index.html page is prompted to enter the name of an Amazon S3 bucket. Upon adding the bucket name, the contents of the bucket will be rendered on the page.
+The index.html file in this bucket contains the entire application. A visitor to the index.html page is prompted to enter the name of an Amazon S3 bucket. Upon adding the bucket name, the contents of the bucket will be rendered on the page. Alternatively, access a bucket directly by appending the bucket name to the path, such as <http://s3_instance.mycompany.com/my_bucket/index.html>.
+
+## Updates
+
+This project is a fork of <https://github.com/awslabs/aws-js-s3-explorer>, intended for use with self-hosted applications on instances such as Ceph. To allow browsing, ensure that the bucket is enabled with at least the "public-read" ACL and any objects that should be viewable also have this ACL.
+
+The following additional features are included:
+
+1. Always use path-style URLs to prevent CORS issues for self-hosted browsing. Use the option 1 URL under CORS Configuration when connecting.
+2. Update datetime format for better readability.
+3. Allow accessing objects or hierarchy locations directly through the URL hash.
 
 ## Setting Bucket Permissions and Enabling CORS
 
